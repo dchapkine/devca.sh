@@ -97,6 +97,16 @@ Now try to `curl -v https://localhost:7991`, you should see only happy things
 
 ```
 
+Going back for the entire reason for this example to exist: gitlab's evaluate client.
+
+Now you can use it properly, without modification like this:
+
+```
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+evaluate-bitbucket -s https://localhost:7991 -t YOUR_BITBUCKET_ACCESS_TOKEN
+```
+
+
 
 # Import CA in chrome
 
