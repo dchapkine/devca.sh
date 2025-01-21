@@ -180,9 +180,16 @@ case "$COMMAND" in
         echo "Creating CSR for $DOMAIN..."
         openssl req -new -key "$DOMAIN_KEY" -out "$DOMAIN_CSR" -subj "/CN=$DOMAIN"
 
+        # Create temporary extension file for SAN
+        EXTFILE=$(mktemp)
+        echo "subjectAltName = DNS:$DOMAIN" > "$EXTFILE"
+
         echo "Signing certificate for $DOMAIN using local CA..."
-        openssl ca -batch -config "$CONFIG_FILE" -keyfile "$CA_DIR/ca.key" -cert "$CA_DIR/ca.crt" \
-            -in "$DOMAIN_CSR" -out "$DOMAIN_CERT" -days 825 -notext -md sha256
+        openssl x509 -req -in "$DOMAIN_CSR" -CA "$CA_DIR/ca.crt" -CAkey "$CA_DIR/ca.key" \
+            -CAcreateserial -out "$DOMAIN_CERT" -days 825 -sha256 \
+            -extfile "$EXTFILE"
+
+        rm "$EXTFILE"
 
         echo "Certificate signed:"
         echo "  Private Key: $DOMAIN_KEY"
@@ -286,9 +293,16 @@ EOF
         echo "Creating CSR for $DOMAIN..."
         openssl req -new -key "$TLS_KEY" -out "$TLS_CSR" -subj "/CN=$DOMAIN"
 
+        # Create temporary extension file for SAN
+        EXTFILE=$(mktemp)
+        echo "subjectAltName = DNS:$DOMAIN" > "$EXTFILE"
+
         echo "Signing certificate for $DOMAIN with local CA..."
         openssl x509 -req -in "$TLS_CSR" -CA "$CA_DIR/ca.crt" -CAkey "$CA_DIR/ca.key" \
-            -CAcreateserial -out "$TLS_CERT" -days 825 -sha256
+            -CAcreateserial -out "$TLS_CERT" -days 825 -sha256 \
+            -extfile "$EXTFILE"
+
+        rm "$EXTFILE"
 
         echo "PEM certificate and key generated:"
         echo "  Private Key: $TLS_KEY"
