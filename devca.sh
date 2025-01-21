@@ -53,7 +53,7 @@ stateOrProvinceName             = State or Province Name
 localityName                    = Locality Name
 0.organizationName              = Organization Name
 organizationalUnitName          = Organizational Unit Name
-commonName                      = Common Name
+commonName                      = Common Name (e.g. server FQDN or YOUR name)
 emailAddress                    = Email Address
 
 [ usr_cert ]
@@ -82,6 +82,7 @@ usage() {
     echo "Usage:"
     echo "  $0 newcert <domain>"
     echo "  $0 newjks <alias> <keystore_path> <storepass> [SAN1 SAN2 ...]"
+    echo "  $0 newtls <domain>"
     echo "  $0 install-ca"
     exit 1
 }
@@ -177,7 +178,7 @@ case "$COMMAND" in
         openssl genrsa -out "$DOMAIN_KEY" 2048
 
         echo "Creating CSR for $DOMAIN..."
-        openssl req -new -key "$DOMAIN_KEY" -out "$DOMAIN_CSR" -subj "CN=$DOMAIN"
+        openssl req -new -key "$DOMAIN_KEY" -out "$DOMAIN_CSR" -subj "/CN=$DOMAIN"
 
         echo "Signing certificate for $DOMAIN using local CA..."
         openssl ca -batch -config "$CONFIG_FILE" -keyfile "$CA_DIR/ca.key" -cert "$CA_DIR/ca.crt" \
@@ -269,6 +270,29 @@ EOF
 
             echo "Keystore $KEYSTORE has been updated with a certificate signed by the local CA."
         fi
+        ;;
+
+    newtls)
+        DOMAIN=$2
+        [ -z "$DOMAIN" ] && usage
+
+        TLS_KEY="$CA_DIR/private/$DOMAIN.key"
+        TLS_CERT="$CA_DIR/certs/$DOMAIN.crt"
+        TLS_CSR="$CA_DIR/$DOMAIN.csr"
+
+        echo "Generating private key for $DOMAIN..."
+        openssl genrsa -out "$TLS_KEY" 2048
+
+        echo "Creating CSR for $DOMAIN..."
+        openssl req -new -key "$TLS_KEY" -out "$TLS_CSR" -subj "/CN=$DOMAIN"
+
+        echo "Signing certificate for $DOMAIN with local CA..."
+        openssl x509 -req -in "$TLS_CSR" -CA "$CA_DIR/ca.crt" -CAkey "$CA_DIR/ca.key" \
+            -CAcreateserial -out "$TLS_CERT" -days 825 -sha256
+
+        echo "PEM certificate and key generated:"
+        echo "  Private Key: $TLS_KEY"
+        echo "  Certificate: $TLS_CERT"
         ;;
 
     install-ca)
