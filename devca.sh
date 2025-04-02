@@ -3,18 +3,21 @@ set -e
 
 # Base directory for CA operations in ~/.devca
 CA_DIR="$HOME/.devca"
-CONFIG_FILE="$CA_DIR/openssl.cnf"
 
 # Initialize CA directory structure and config if not present
 init_ca() {
-    mkdir -p "$CA_DIR"/{certs,crl,newcerts,private}
+    mkdir -p "$CA_DIR"/{certs,crl,newcerts,private,csr,p12}
     chmod 700 "$CA_DIR/private"
     touch "$CA_DIR/index.txt"
     [ -f "$CA_DIR/serial" ] || echo '1000' > "$CA_DIR/serial"
 
-    # Create a minimal OpenSSL configuration file if not exist
-    if [ ! -f "$CONFIG_FILE" ]; then
-        cat > "$CONFIG_FILE" <<EOF
+
+    # Create CA key and certificate if they don't exist
+    if [ ! -f "$CA_DIR/ca.key" ] || [ ! -f "$CA_DIR/ca.crt" ]; then
+        echo "Generating CA key and self-signed certificate..."
+
+        CA_CONFIG=$(mktemp)
+        cat > "$CA_CONFIG" <<EOF
 [ ca ]
 default_ca = CA_default
 
@@ -29,7 +32,7 @@ certificate       = \$dir/ca.crt
 default_days      = 365
 default_md        = sha256
 policy            = policy_any
-x509_extensions   = usr_cert
+x509_extensions   = v3_ca
 copy_extensions   = copy
 
 [ policy_any ]
@@ -42,40 +45,33 @@ commonName              = supplied
 emailAddress            = optional
 
 [ req ]
-default_bits        = 2048
-default_keyfile     = privkey.pem
-distinguished_name  = req_distinguished_name
-string_mask         = utf8only
+default_bits       = 4096
+default_md         = sha256
+prompt             = no
+string_mask        = utf8only
+distinguished_name = req_distinguished_name
+x509_extensions    = v3_ca
 
 [ req_distinguished_name ]
-countryName                     = Country Name (2 letter code)
-stateOrProvinceName             = State or Province Name
-localityName                    = Locality Name
-0.organizationName              = Organization Name
-organizationalUnitName          = Organizational Unit Name
-commonName                      = Common Name (e.g. server FQDN or YOUR name)
-emailAddress                    = Email Address
+C  = US
+ST = State
+L  = City
+O  = DEVCA
+CN = DEVCA
 
-[ usr_cert ]
-basicConstraints=CA:FALSE
-nsCertType                      = client, email
-nsComment                       = "OpenSSL Generated Client Certificate"
-subjectKeyIdentifier=hash
-authorityKeyIdentifier=keyid,issuer
+[ v3_ca ]
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always,issuer
+basicConstraints       = critical, CA:TRUE
+keyUsage               = critical, keyCertSign, cRLSign
 EOF
+        openssl genrsa -out "$CA_DIR/ca.key" 4096
+        openssl req -x509 -new -nodes -key "$CA_DIR/ca.key" -config $CA_CONFIG -days 3650 -out "$CA_DIR/ca.crt" -subj "/CN=LocalRootCA"
     fi
 }
 
 # Initialize CA if not yet set up
 init_ca
-
-# Create CA key and certificate if they don't exist
-if [ ! -f "$CA_DIR/ca.key" ] || [ ! -f "$CA_DIR/ca.crt" ]; then
-    echo "Generating CA key and self-signed certificate..."
-    openssl genrsa -out "$CA_DIR/ca.key" 4096
-    openssl req -x509 -new -nodes -key "$CA_DIR/ca.key" -days 3650 \
-        -out "$CA_DIR/ca.crt" -subj "/CN=LocalRootCA"
-fi
 
 # Usage message
 usage() {
@@ -171,7 +167,7 @@ case "$COMMAND" in
         [ -z "$DOMAIN" ] && usage
 
         DOMAIN_KEY="$CA_DIR/private/$DOMAIN.key"
-        DOMAIN_CSR="$CA_DIR/$DOMAIN.csr"
+        DOMAIN_CSR="$CA_DIR/csr/$DOMAIN.csr"
         DOMAIN_CERT="$CA_DIR/certs/$DOMAIN.crt"
 
         echo "Generating private key for $DOMAIN..."
